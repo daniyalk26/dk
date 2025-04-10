@@ -9,7 +9,7 @@ import os
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
-# Import from your local file:
+# Your local ETL imports:
 from spotify_etl import extract_data, upload_to_s3
 
 AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
@@ -19,8 +19,9 @@ PROCESSED_BUCKET = 'spotify-processed-data-dk'
 
 CLIENT_ID = os.environ.get('SPOTIFY_CLIENT_ID')
 CLIENT_SECRET = os.environ.get('SPOTIFY_CLIENT_SECRET')
-REDIRECT_URI = 'http://18.119.104.127:8501/callback'  # Must EXACTLY match Spotify Dev Dashboard
+REDIRECT_URI = 'http://18.119.104.127:8501/callback'  # Must EXACTLY match your Spotify Dashboard settings
 SCOPE = 'user-read-private user-top-read user-read-recently-played'
+
 
 def fetch_processed_data(processed_key):
     """Fetch the processed JSON from S3 by key."""
@@ -37,6 +38,7 @@ def fetch_processed_data(processed_key):
     except Exception as e:
         st.error(f"Error fetching processed data: {e}")
         return None
+
 
 def display_grid(items, item_type="artist", columns_per_row=3):
     """
@@ -66,6 +68,7 @@ def display_grid(items, item_type="artist", columns_per_row=3):
                 if image_url:
                     col.image(image_url, use_container_width=True)
 
+
 def main():
     st.title("Spotify Dashboard – Day vs Night, Mainstream Score, and More!")
     st.markdown("""
@@ -79,11 +82,10 @@ def main():
 
     # 1) If we already have an access token in session_state, skip the login flow
     if 'spotify_token' in st.session_state:
-        # Proceed to data extraction and display
         show_spotify_dashboard()
         return
 
-    # 2) Otherwise, see if we have the 'code' from the URL
+    # 2) Otherwise, check if we have 'code' from the URL
     query_params = st.query_params
     code = query_params.get('code', [None])[0]
 
@@ -91,7 +93,6 @@ def main():
         # No code => user hasn't logged in
         st.info("Please log in to Spotify.")
         if st.button("Connect Spotify & Load Data"):
-            # Create the OAuth manager
             oauth = SpotifyOAuth(
                 client_id=CLIENT_ID,
                 client_secret=CLIENT_SECRET,
@@ -101,6 +102,7 @@ def main():
             )
             auth_url = oauth.get_authorize_url()
             st.markdown(f"[Click here to authorize with Spotify]({auth_url})")
+
     else:
         # We have a 'code' => user was redirected back from Spotify
         st.info("Exchanging code for token...")
@@ -111,46 +113,44 @@ def main():
             redirect_uri=REDIRECT_URI,
             scope=SCOPE
         )
+
+        # Attempt to exchange the code for a valid token
         token_info = oauth.get_access_token(code)
 
         if token_info and 'access_token' in token_info:
-            # Store the token in session_state so we don't reuse the code
+            # Success! Save token so we don't reuse the code.
             st.session_state.spotify_token = token_info['access_token']
 
-            # Remove 'code' from the URL to avoid repeated usage and invalid_grant
-            st.experimental_set_query_params()  # Clear all query params
-            st.experimental_rerun()            # Immediately re-run without the code
+            # Remove 'code' from the URL to avoid reusing it (invalid_grant on refresh)
+            st.experimental_set_query_params()  # Clears query params
+            st.experimental_rerun()            # Re-run the app without the code
         else:
-            st.error("Failed to get access token from Spotify. Check logs or redirect URI settings.")
+            st.error("Failed to get access token from Spotify. "
+                     "Make sure your Redirect URI in Spotify's dashboard matches this code exactly.")
 
 
 def show_spotify_dashboard():
-    """Once we have st.session_state.spotify_token, load data and display the charts."""
-    # Create a Spotify client with the token
+    """This runs once we have st.session_state.spotify_token."""
     sp = spotipy.Spotify(auth=st.session_state.spotify_token)
 
-    # Extract data from Spotify, display raw, and upload to S3
     with st.spinner("Extracting data from Spotify..."):
         try:
             raw_data, upload_message, raw_key = extract_data(sp)
             st.success(upload_message)
-            
             with st.expander("View Raw Spotify Data", expanded=False):
                 st.json(raw_data)
-
         except Exception as e:
             st.error(f"Error during Spotify data extraction: {e}")
             return
 
-    # Build the processed key (same logic that your Lambda uses)
+    # Use the same logic as your Lambda to build processed key
     processed_key = raw_key.replace("raw/", "processed/").replace(".json", ".processed.json")
 
     st.info("Waiting for data processing (Lambda)...")
-    time.sleep(15)  # give your Lambda/ETL time to process
+    time.sleep(15)  # Give your Lambda time to process
 
     with st.spinner("Loading processed data..."):
         processed_data = fetch_processed_data(processed_key)
-
         if processed_data is None:
             st.error("Failed to load processed data from S3.")
             return
@@ -183,12 +183,12 @@ def show_spotify_dashboard():
         # --------------------------
         with st.expander("View Mainstream Score", expanded=False):
             mainstream_score = processed_data.get("mainstream_score", 0)
-            mainstream_score_rounded = round(mainstream_score, 1)
-            if mainstream_score_rounded > 0:
-                st.write(f"Your average track popularity is **{mainstream_score_rounded}** out of 100.")
-                if mainstream_score_rounded >= 70:
+            msm_rounded = round(mainstream_score, 1)
+            if msm_rounded > 0:
+                st.write(f"Your average track popularity is **{msm_rounded}** out of 100.")
+                if msm_rounded >= 70:
                     st.write("Wow, you’re very mainstream — your playlist could dominate the radio!")
-                elif mainstream_score_rounded >= 40:
+                elif msm_rounded >= 40:
                     st.write("You’re moderately mainstream — a balanced blend of hits and hidden gems.")
                 else:
                     st.write("You’re quite indie — you dig deep cuts and obscure tracks!")
