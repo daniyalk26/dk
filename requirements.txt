@@ -1,0 +1,6 @@
+boto3
+spotipy
+streamlit
+pandas
+matplotlib
+numpy
