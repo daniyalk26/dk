@@ -77,7 +77,8 @@ def main():
     """)
 
     # Check if 'code' is in the URL query params
-    query_params = st.experimental_get_query_params()
+    query_params = st.query_params
+
     code = query_params.get('code', [None])[0]
 
     if code is None:
@@ -126,7 +127,7 @@ def main():
             processed_key = raw_key.replace("raw/", "processed/").replace(".json", ".processed.json")
 
             st.info("Waiting for data processing (Lambda)...")
-            time.sleep(5)  # give your Lambda/ETL time to process
+            time.sleep(15)  # give your Lambda/ETL time to process
 
             with st.spinner("Loading processed data..."):
                 processed_data = fetch_processed_data(processed_key)
