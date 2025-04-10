@@ -8,7 +8,7 @@ from spotipy.oauth2 import SpotifyOAuth
 
 CLIENT_ID = os.environ.get('SPOTIFY_CLIENT_ID')
 CLIENT_SECRET = os.environ.get('SPOTIFY_CLIENT_SECRET')
-REDIRECT_URI = 'http://localhost:8888/callback'
+REDIRECT_URI = 'http://18.119.104.127:8501/callback'
 SCOPE = 'user-read-private user-top-read user-read-recently-played'
 
 S3_BUCKET = 'spotify-raw-data-dk'
