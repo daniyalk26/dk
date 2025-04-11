@@ -81,7 +81,7 @@ def upload_to_s3(file_name, bucket, object_name=None):
         object_name = os.path.basename(file_name)
     try:
         s3_client.upload_file(file_name, bucket, object_name)
-        return f"Uploaded {file_name} to bucket '{bucket}' as '{object_name}'."
+       
     except Exception as e:
         raise Exception(f"Error uploading file: {e}")
 
