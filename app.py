@@ -195,7 +195,7 @@ def main():
 
         # (B) Wait for data processing by your Lambda or backend (adjust sleep if needed)
         st.info("Waiting for data processing (Lambda)...")
-        time.sleep(5)
+        time.sleep(15)
 
         # (C) Attempt to load processed data
         processed_key = raw_key.replace("raw/", "processed/").replace(".json", ".processed.json")
