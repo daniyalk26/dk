@@ -163,12 +163,12 @@ def main():
         - **Daily Listening** stats for the past 7 days
     """)
 
-    # 1. Use the new property st.query_params (no parentheses).
-    query_params = st.experimental_get_query_params()
+    # 1. Use the new property st.query_params
+    query_params = st.query_params
 
     # 2. If the 'code' param is present, try exchanging it for a token
     if "code" in query_params:
-        code = query_params["code"][0]
+        code = query_params["code"]
         sp_oauth = get_spotipy_oauth()
 
         with st.spinner("Authenticating with Spotify..."):
@@ -184,17 +184,12 @@ def main():
 
                 # (A) Extract + Upload Raw Data
                 raw_data, upload_message, raw_key = authenticate_and_extract(sp)
-                st.success(upload_message)
-
-                with st.expander("View Raw Spotify Data", expanded=False):
-                    st.json(raw_data)
 
             except Exception as e:
                 st.error(f"Error during Spotify authentication/extraction: {e}")
                 return
 
         # (B) Wait for data processing by your Lambda or backend (adjust sleep if needed)
-        st.info("Waiting for data processing (Lambda)...")
         time.sleep(15)
 
         # (C) Attempt to load processed data
@@ -206,73 +201,79 @@ def main():
                 st.error("Failed to load processed data from S3.")
                 return
 
-            with st.expander("View Processed Data (Full JSON)", expanded=False):
-                st.json(processed_data)
+        # ------------------ SECTION 1: Genre Distribution ------------------ #
+        with st.expander("View Genre Distribution", expanded=False):
+            genres = processed_data.get("genres", {})
+            genre_labels = genres.get("labels", [])
+            genre_sizes = genres.get("sizes", [])
+            if genre_labels and genre_sizes:
+                fig, ax = plt.subplots()
+                ax.pie(
+                    genre_sizes,
+                    labels=genre_labels,
+                    autopct='%1.1f%%',
+                    startangle=140
+                )
+                ax.axis('equal')  # Make the pie chart circular
+                st.pyplot(fig)
+            else:
+                st.info("No genre data found.")
 
-            # ------------------ SECTION 1: Genre Distribution ------------------ #
-            with st.expander("View Genre Distribution", expanded=False):
-                genres = processed_data.get("genres", {})
-                genre_labels = genres.get("labels", [])
-                genre_sizes = genres.get("sizes", [])
-                if genre_labels and genre_sizes:
-                    fig, ax = plt.subplots()
-                    ax.pie(
-                        genre_sizes,
-                        labels=genre_labels,
-                        autopct='%1.1f%%',
-                        startangle=140
-                    )
-                    ax.axis('equal')  # Make the pie chart circular
-                    st.pyplot(fig)
+        # ------------------ SECTION 2: Mainstream Score ------------------ #
+        with st.expander("View Mainstream Score", expanded=False):
+            mainstream_score = processed_data.get("mainstream_score", 0)
+            mainstream_score_rounded = round(mainstream_score, 1)
+            if mainstream_score_rounded > 0:
+                st.write(f"Your average track popularity is **{mainstream_score_rounded}** out of 100.")
+                if mainstream_score_rounded >= 70:
+                    st.write("Wow, you’re very mainstream — your playlist could dominate the radio!")
+                elif mainstream_score_rounded >= 40:
+                    st.write("You’re moderately mainstream — a balanced blend of hits and hidden gems.")
                 else:
-                    st.info("No genre data found.")
+                    st.write("You’re quite indie — you dig deep cuts and obscure tracks!")
+            else:
+                st.info("No mainstream data found.")
 
-            # ------------------ SECTION 2: Mainstream Score ------------------ #
-            with st.expander("View Mainstream Score", expanded=False):
-                mainstream_score = processed_data.get("mainstream_score", 0)
-                mainstream_score_rounded = round(mainstream_score, 1)
-                if mainstream_score_rounded > 0:
-                    st.write(f"Your average track popularity is **{mainstream_score_rounded}** out of 100.")
-                    if mainstream_score_rounded >= 70:
-                        st.write("Wow, you’re very mainstream — your playlist could dominate the radio!")
-                    elif mainstream_score_rounded >= 40:
-                        st.write("You’re moderately mainstream — a balanced blend of hits and hidden gems.")
-                    else:
-                        st.write("You’re quite indie — you dig deep cuts and obscure tracks!")
-                else:
-                    st.info("No mainstream data found.")
+        # ------------------ SECTION 3: Day vs. Night ------------------ #
+        with st.expander("View Day vs. Night Listening", expanded=False):
+            day_vs_night = processed_data.get("day_vs_night", {})
+            day_percent = day_vs_night.get("day_percent", 0)
+            night_percent = day_vs_night.get("night_percent", 0)
+            st.write(f"**{day_percent}%** of your listening is during the day, **{night_percent}%** at night.")
+            if night_percent > day_percent:
+                st.write("You’re a midnight music muncher! 🌙")
+            else:
+                st.write("You’re more of a daytime music star! ☀️")
 
-            # ------------------ SECTION 3: Day vs. Night ------------------ #
-            with st.expander("View Day vs. Night Listening", expanded=False):
-                day_vs_night = processed_data.get("day_vs_night", {})
-                day_percent = day_vs_night.get("day_percent", 0)
-                night_percent = day_vs_night.get("night_percent", 0)
-                st.write(f"**{day_percent}%** of your listening is during the day, **{night_percent}%** at night.")
-                if night_percent > day_percent:
-                    st.write("You’re a midnight music muncher! 🌙")
-                else:
-                    st.write("You’re more of a daytime music star! ☀️")
+        # ------------------ SECTION 4: Top 10 Artists ------------------ #
+        with st.expander("View Top 10 Artists", expanded=False):
+            top_artists = processed_data.get("top_artists", [])
+            display_grid(top_artists, item_type="artist", columns_per_row=3)
 
-            # ------------------ SECTION 4: Top 10 Artists ------------------ #
-            with st.expander("View Top 10 Artists", expanded=False):
-                top_artists = processed_data.get("top_artists", [])
-                display_grid(top_artists, item_type="artist", columns_per_row=3)
+        # ------------------ SECTION 5: Top 10 Tracks ------------------ #
+        with st.expander("View Top 10 Tracks", expanded=False):
+            top_tracks = processed_data.get("top_tracks", [])
+            display_grid(top_tracks, item_type="track", columns_per_row=3)
 
-            # ------------------ SECTION 5: Top 10 Tracks ------------------ #
-            with st.expander("View Top 10 Tracks", expanded=False):
-                top_tracks = processed_data.get("top_tracks", [])
-                display_grid(top_tracks, item_type="track", columns_per_row=3)
+        # ------------------ SECTION 6: Daily Listening ------------------ #
+        with st.expander("View Daily Listening (Past 7 Days)", expanded=False):
+            listening_time = processed_data.get("listening_time", {})
+            labels = listening_time.get("daily_listening_labels", [])
+            values = listening_time.get("daily_listening_values", [])
+            if labels and values:
+                df_listen = pd.DataFrame({"Date": labels, "Minutes": values}).set_index("Date")
+                st.bar_chart(df_listen)
+            else:
+                st.info("No daily listening data found.")
 
-            # ------------------ SECTION 6: Daily Listening ------------------ #
-            with st.expander("View Daily Listening (Past 7 Days)", expanded=False):
-                listening_time = processed_data.get("listening_time", {})
-                labels = listening_time.get("daily_listening_labels", [])
-                values = listening_time.get("daily_listening_values", [])
-                if labels and values:
-                    df_listen = pd.DataFrame({"Date": labels, "Minutes": values}).set_index("Date")
-                    st.bar_chart(df_listen)
-                else:
-                    st.info("No daily listening data found.")
+        # ------------------ MOVED: Show Raw and Processed Data at the End ------------------ #
+        st.success(upload_message)  # Upload message after all the main sections
+
+        with st.expander("View Raw Spotify Data", expanded=False):
+            st.json(raw_data)
+
+        with st.expander("View Processed Data (Full JSON)", expanded=False):
+            st.json(processed_data)
 
     else:
         # If code is not present in the URL, show a big "Login to Spotify" link
