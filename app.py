@@ -17,7 +17,7 @@ AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
 REGION = os.environ.get('REGION', 'us-east-2')
 PROCESSED_BUCKET = 'spotify-processed-data-dk'
 
-# Change to your EC2 or domain + port:
+# Change BASE_URL to your actual app URL or EC2 public IP + port:
 BASE_URL = "http://18.119.104.127:8501"
 REDIRECT_URI = f"{BASE_URL}/callback"
 SCOPE = 'user-read-private user-top-read user-read-recently-played'
@@ -88,7 +88,7 @@ def upload_to_s3(file_name, bucket, object_name=None):
 def authenticate_and_extract(sp):
     """
     Given a Spotipy client (with a valid token), extract user data and upload to S3.
-    Returns raw_data, upload_message, raw_key
+    Returns (raw_data, upload_message, raw_key).
     """
     # 1) Current User Info
     current_user = sp.current_user()
@@ -130,9 +130,9 @@ def authenticate_and_extract(sp):
 # ------------- Spotify OAuth Helper ------------- #
 def get_spotipy_oauth():
     """
-    Returns a SpotifyOAuth object configured for your app.
-    1) Removes old .cache to avoid reusing old tokens,
-    2) Uses a unique cache_path to separate each new login session.
+    Returns a SpotifyOAuth object configured for your app:
+      1) Removes old .cache to avoid reusing old tokens,
+      2) Uses a unique cache_path to separate each new login session.
     """
     # ---- 1) Remove the default .cache if it exists ----
     if os.path.exists(".cache"):
@@ -156,24 +156,24 @@ def main():
     st.title("Spotify Dashboard – Day vs Night, Mainstream Score, and More!")
     st.markdown("""
         This dashboard lets you connect to your Spotify account and see:
-        - **Genre Distribution** in a colorful pie chart
+        - **Genre Distribution** in a pie chart
         - **Mainstream Score**
         - **Day vs. Night** listening habits
         - **Top 10 Artists** & **Top 10 Tracks**
         - **Daily Listening** stats for the past 7 days
     """)
 
-    # Grab query params to see if we have ?code=<XYZ>
-    # IMPORTANT: st.query_params is now a property, not a function. No parentheses.
+    # 1. Use the new property st.query_params (no parentheses).
     query_params = st.query_params
 
-    # If the 'code' param is present, try exchanging it for a token
+    # 2. If the 'code' param is present, try exchanging it for a token
     if "code" in query_params:
         code = query_params["code"][0]
         sp_oauth = get_spotipy_oauth()
 
         with st.spinner("Authenticating with Spotify..."):
             try:
+                # Attempt to get a token using this code
                 token_info = sp_oauth.get_access_token(code)
                 if not token_info or "access_token" not in token_info:
                     st.error("Could not retrieve valid token info from Spotify.")
@@ -193,7 +193,7 @@ def main():
                 st.error(f"Error during Spotify authentication/extraction: {e}")
                 return
 
-        # (B) Wait for data processing by Lambda (you may adjust the sleep time)
+        # (B) Wait for data processing by your Lambda or backend (adjust sleep if needed)
         st.info("Waiting for data processing (Lambda)...")
         time.sleep(5)
 
@@ -222,7 +222,7 @@ def main():
                         autopct='%1.1f%%',
                         startangle=140
                     )
-                    ax.axis('equal')  # make the pie chart circular
+                    ax.axis('equal')  # Make the pie chart circular
                     st.pyplot(fig)
                 else:
                     st.info("No genre data found.")
@@ -275,7 +275,7 @@ def main():
                     st.info("No daily listening data found.")
 
     else:
-        # If code is not present, show a big "Login to Spotify" link
+        # If code is not present in the URL, show a big "Login to Spotify" link
         st.subheader("Step 1: Authorize Spotify")
         sp_oauth = get_spotipy_oauth()
         auth_url = sp_oauth.get_authorize_url()
