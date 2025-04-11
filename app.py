@@ -164,10 +164,8 @@ def main():
     """)
 
     # Grab query params to see if we have ?code=<XYZ>
-   
-    query_params =  st.query_params()
-
-    
+    # IMPORTANT: st.query_params is now a property, not a function. No parentheses.
+    query_params = st.query_params
 
     # If the 'code' param is present, try exchanging it for a token
     if "code" in query_params:
