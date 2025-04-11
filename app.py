@@ -9,6 +9,7 @@ import os
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from datetime import datetime, timedelta
+import uuid  # <-- for generating unique cache paths
 
 # ---------------- ENV / CONFIG ---------------- #
 AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
@@ -17,12 +18,11 @@ REGION = os.environ.get('REGION', 'us-east-2')
 PROCESSED_BUCKET = 'spotify-processed-data-dk'
 
 # Change to your EC2 or domain + port:
-BASE_URL = "http://18.119.104.127:8501" 
+BASE_URL = "http://18.119.104.127:8501"
 REDIRECT_URI = f"{BASE_URL}/callback"
 SCOPE = 'user-read-private user-top-read user-read-recently-played'
 
 # ------------- Helper Functions (S3 + Display) ------------- #
-
 def fetch_processed_data(processed_key):
     """Fetch processed JSON from S3."""
     try:
@@ -67,15 +67,14 @@ def display_grid(items, item_type="artist", columns_per_row=3):
                 if image_url:
                     col.image(image_url, use_container_width=True)
 
-
 # ------------- Our ETL (raw data extraction) ------------- #
 def upload_to_s3(file_name, bucket, object_name=None):
     """Upload a file to an S3 bucket."""
     s3_client = boto3.client(
         's3',
-        aws_access_key_id = os.environ.get('AWS_ACCESS_KEY_ID'),
-        aws_secret_access_key= os.environ.get('AWS_SECRET_ACCESS_KEY'),
-        region_name= os.environ.get('REGION', 'us-east-2')
+        aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+        aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
+        region_name=os.environ.get('REGION', 'us-east-2')
     )
 
     if object_name is None:
@@ -128,21 +127,29 @@ def authenticate_and_extract(sp):
 
     return combined_data, upload_message, raw_key
 
-
 # ------------- Spotify OAuth Helper ------------- #
 def get_spotipy_oauth():
     """
     Returns a SpotifyOAuth object configured for your app.
+    1) Removes old .cache to avoid reusing old tokens,
+    2) Uses a unique cache_path to separate each new login session.
     """
+    # ---- 1) Remove the default .cache if it exists ----
+    if os.path.exists(".cache"):
+        os.remove(".cache")
+
+    # ---- 2) Generate a unique cache path for each user session ----
+    cache_path = f".cache_{uuid.uuid4()}"
+
     return SpotifyOAuth(
         client_id=os.environ.get('SPOTIFY_CLIENT_ID'),
         client_secret=os.environ.get('SPOTIFY_CLIENT_SECRET'),
         redirect_uri=REDIRECT_URI,
         scope=SCOPE,
         show_dialog=True,
-        open_browser=False   # don't try to open a local browser on the server
+        open_browser=False,
+        cache_path=cache_path
     )
-
 
 # ------------- The Streamlit App Entry Point ------------- #
 def main():
@@ -272,7 +279,6 @@ def main():
         sp_oauth = get_spotipy_oauth()
         auth_url = sp_oauth.get_authorize_url()
         st.markdown(f"[Click here to **Login to Spotify**]({auth_url})")
-
 
 if __name__ == "__main__":
     main()
