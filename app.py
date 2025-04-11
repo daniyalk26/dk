@@ -21,7 +21,7 @@ CLIENT_ID = os.environ.get('SPOTIFY_CLIENT_ID')
 CLIENT_SECRET = os.environ.get('SPOTIFY_CLIENT_SECRET')
 
 # Your EC2's public IP or DNS + port
-BASE_URL = "http://18.119.104.127:8501"
+BASE_URL = "http://18.119.104.127:8501"  # Update to your own IP/domain if needed
 REDIRECT_URI = f"{BASE_URL}/callback"
 
 # Buckets
@@ -37,11 +37,6 @@ s3_client = boto3.client(
 )
 
 # ------------------------ Helper Functions ------------------------ #
-def upload_to_s3(file_name, bucket, object_key):
-    """Upload a local file to S3."""
-    s3_client.upload_file(file_name, bucket, object_key)
-    return f"Uploaded {file_name} to bucket '{bucket}' as '{object_key}'."
-
 def display_grid(items, item_type="artist", columns_per_row=3):
     """
     Lay out items (artists or tracks) in a grid (rows of columns).
@@ -86,7 +81,7 @@ def extract_spotify_data(sp):
     2) Fetch top artists/tracks
     3) Fetch recently played (7 days)
     4) Upload combined JSON to S3 (raw data)
-    5) Return (raw_data, upload_message, raw_key)
+    5) Return (raw_data, raw_key)
     """
     # Get user info
     current_user = sp.current_user()
@@ -110,18 +105,19 @@ def extract_spotify_data(sp):
         "recently_played": recently_played
     }
 
-    # Save locally
+    # Save locally & upload to raw S3 bucket
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     local_file_name = f"user_spotify_data_{timestamp}.json"
     with open(local_file_name, 'w') as f:
         json.dump(raw_data, f, indent=2)
 
-    # Upload to S3 (raw data bucket)
     raw_key = f"raw/{local_file_name}"
-    upload_message = upload_to_s3(local_file_name, S3_RAW_BUCKET, raw_key)
+    try:
+        s3_client.upload_file(local_file_name, S3_RAW_BUCKET, raw_key)
+    except Exception as e:
+        st.error(f"Error uploading raw data to S3: {e}")
 
-    return raw_data, upload_message, raw_key
-
+    return raw_data, raw_key
 
 # --------------------------- Main App --------------------------- #
 def main():
@@ -142,50 +138,46 @@ def main():
         redirect_uri=REDIRECT_URI,
         scope="user-read-private user-top-read user-read-recently-played",
         show_dialog=True,
-        open_browser=False,        # so it won't try to open a local browser
-        cache_path=".spotipyoauth" # optional custom cache
+        open_browser=False,       
+        cache_path=".spotipyoauth" 
     )
 
     # Check if we have a "code" parameter in the URL
-    query_params = st.experimental_get_query_params()
-    code_param = query_params.get("code", [None])[0]
+    query_params = st.query_params  # <-- Replaced experimental_get_query_params
+    code_param = query_params.get("code", None)
 
     if code_param is None:
         # User hasn't authorized yet -> show a link to the Spotify login
-        st.write("#### Step 1: Authorize with Spotify")
         auth_url = sp_oauth.get_authorize_url()
         st.markdown(f"[**Connect Spotify & Load Data**]({auth_url})")
         st.info("Click the link above to log into Spotify and grant permissions.")
     else:
-        # We have a code in the URL, try to exchange for token
-        st.info("Exchanging authorization code for token...")
+        # We have a code in the URL, try to exchange for token (silently, no logs)
         token_info = sp_oauth.get_access_token(code_param)
 
         if not token_info:
             st.error("Could not retrieve access token from Spotify. Please try again.")
             return
 
+        # Build the authorized client
         access_token = token_info["access_token"]
         sp = spotipy.Spotify(auth=access_token)
 
-        st.success("Spotify authorization successful!")
-        st.write("Now extracting your Spotify data...")
-
-        # 1) Extract & upload raw data
+        # Extract & upload raw data to S3
         try:
-            raw_data, upload_message, raw_key = extract_spotify_data(sp)
-            st.success(upload_message)
-
-            with st.expander("View Raw Spotify Data", expanded=False):
-                st.json(raw_data)
+            raw_data, raw_key = extract_spotify_data(sp)
         except Exception as e:
             st.error(f"Error during Spotify extraction: {e}")
             return
 
-        # 2) Wait for Lambda to process, then fetch processed data
-        # Build processed key => raw/user_spotify_data_XXX.json => processed/user_spotify_data_XXX.processed.json
+        # Optionally show raw data
+        with st.expander("View Raw Spotify Data", expanded=False):
+            st.json(raw_data)
+
+        # Wait for Lambda to process, then fetch processed data
         processed_key = raw_key.replace("raw/", "processed/").replace(".json", ".processed.json")
 
+        # If your Lambda is triggered automatically on S3 put, wait a bit
         st.info("Waiting for data processing (Lambda)...")
         time.sleep(5)
 
@@ -215,7 +207,7 @@ def main():
                         colors=colors,
                         startangle=140
                     )
-                    ax.axis('equal')  # make the pie chart a circle
+                    ax.axis('equal')
                     st.pyplot(fig)
                 else:
                     st.info("No genre data found.")
