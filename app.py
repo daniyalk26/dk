@@ -267,7 +267,7 @@ def main():
                 st.info("No daily listening data found.")
 
         # ------------------ MOVED: Show Raw and Processed Data at the End ------------------ #
-        st.success(upload_message)  # Upload message after all the main sections
+       
 
         with st.expander("View Raw Spotify Data", expanded=False):
             st.json(raw_data)
